@@ -1,6 +1,7 @@
 #Script Created by: Chris Bates 
 #Version 1.0
-#Date Last Updated: 1-11-18
+#Date Last Updated: 8-12-18
+#8-12-19: Added ability to exclude using a sec group.
 
 #Setup O365 Connection
 $SetPath = "E:\Scripts" #Path Used to Store Files, etc.
@@ -11,13 +12,19 @@ Connect-MsolService –Credential $MSOLCred
 
 Import-Module activedirectory
 
-$inactiveUsers = Get-ADUser -SearchBase "OU=Users,OU=INACTIVE,DC=cmh,DC=domain,DC=com" -Filter * | Select Name, UserPrincipalName | where {$_.UserPrincipalName -ne $null} #Grabs all users in the INACTIVE/Users OU to check
+$inactiveUsers = Get-ADUser -SearchBase "OU=Users,OU=INACTIVE,DC=cmh,DC=domain,DC=com" -Filter * | Select Name, UserPrincipalName, memberof | where {$_.UserPrincipalName -ne $null} #Grabs all users in the INACTIVE/Users OU to check
+$exclusionGroup = Get-ADGroup -Identity InactiveOUScriptExclusion | Select-Object -ExpandProperty DistinguishedName #Grabs Exclusion Group for use later
 $fulldateandtime = get-date -Format "MM-dd-yyyy  hh-mm tt dddd"
 $logFilePath = "C:\Documents\InactiveLicensedUserLogFile$fulldateandtime.txt"
 $errorLog = "C:\Documents\InactiveUserSharedCheckErrorLog$fulldateandtime.txt"
 
 foreach($user in $inactiveUsers) {
-
+    #Compiles Users Groups
+    $userGroups = $user | Select-Object -ExpandProperty memberof
+    #Compares Users Groups to see if its in the exclusion group
+    if ($userGroups -match $exclusionGroupNJA){
+        Add-Content -Path $logFilePath -Value "$user is in $exclusionGroupNJA. Skipping this User....."
+    } else{	
     $isLicensed = Get-MsolUser -UserPrincipalName $user.UserPrincipalName | Select -ExpandProperty isLicensed #Pulls if they are licensed or not
     $UPN = $user | Select -ExpandProperty UserPrincipalName
 
@@ -58,7 +65,7 @@ foreach($user in $inactiveUsers) {
         Add-Content -Path $logFilePath -Value "$UPN is not licensed. No action taken."
     }  
 }
-
+}
 
 if(Test-Path $errorLog){ #Confirms if Error Log file was created, if it was, then send an email with it attached for review.
 #generates email to user using .net smtpclient to notify them who has client Mailbox Rule forwards.
